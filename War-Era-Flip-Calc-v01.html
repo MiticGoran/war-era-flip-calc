@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>War Era Flip Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#111827;color:#fff;max-width:900px;margin:20px auto;padding:20px}
+.card{background:#1f2937;padding:16px;border-radius:10px;margin-bottom:16px}
+label{display:block;margin-top:10px;font-size:14px;color:#cbd5e1}
+input{width:100%;padding:8px;background:#374151;color:#fff;border:1px solid #555;border-radius:6px;margin-top:4px}
+input.warn{border-color:#ef4444}
+button{margin-top:15px;margin-right:8px;padding:10px 16px;border:none;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer;font-size:14px}
+button.secondary{background:#374151}
+button.danger{background:#7f1d1d}
+button:hover{opacity:.9}
+.result div{margin:6px 0}
+.green{color:#22c55e}.red{color:#ef4444}.yellow{color:#facc15}
+.warning{color:#facc15;font-size:13px;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px;border-bottom:1px solid #444;text-align:left}
+th{cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{color:#60a5fa}
+.best{background:#374151;padding:10px;border-radius:8px;margin-bottom:10px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
+.stat{background:#111827;border-radius:8px;padding:10px;text-align:center}
+.stat .label{font-size:12px;color:#9ca3af}
+.stat .value{font-size:18px;font-weight:bold;margin-top:4px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.toolbar input,.toolbar select{width:auto;margin-top:0}
+.table-wrap{overflow-x:auto}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:50}
+.modal-bg.show{display:flex}
+.modal{background:#1f2937;padding:20px;border-radius:10px;max-width:340px;width:90%}
+.modal h4{margin-top:0}
+.modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.chart-wrap{height:220px;margin-top:10px}
+.small{font-size:12px;color:#9ca3af}
+@media (max-width:600px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  th,td{font-size:12px;padding:6px}
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2>⚔ War Era Flip Calculator</h2>
+<label>Product<input id="product" value="Weapon Q5"></label>
+<label>Quantity<input id="qty" type="number" value="2500"></label>
+<label>Buy Price<input id="buy" type="number" step="0.0001" value="4.35"></label>
+<label>Sell Price<input id="sell" type="number" step="0.0001" value="4.80"></label>
+<label>Market Fee (%)<input id="fee" type="number" step="0.1" value="5"></label>
+<div id="inputWarning" class="warning"></div>
+<div class="result">
+<div>Investment: <span id="investment"></span></div>
+<div>Gross Sale: <span id="gross"></span></div>
+<div>Fee: <span id="feeAmt"></span></div>
+<div>Net Revenue: <span id="net"></span></div>
+<div>Profit: <span id="profit"></span></div>
+<div>Profit / Item: <span id="ppi"></span></div>
+<div>ROI: <span id="roi"></span></div>
+<div>Break-even: <span id="be"></span></div>
+</div>
+<button onclick="saveFlip()">💾 Save Flip</button>
+<button class="danger" onclick="askClearHistory()">🗑 Clear History</button>
+</div>
+
+<div class="card">
+<h3>Dashboard</h3>
+<div class="stats">
+<div class="stat"><div class="label">Total Flips</div><div class="value" id="statCount">0</div></div>
+<div class="stat"><div class="label">Total Profit</div><div class="value" id="statTotal">0</div></div>
+<div class="stat"><div class="label">Avg ROI</div><div class="value" id="statRoi">0%</div></div>
+<div class="stat"><div class="label">Best Product</div><div class="value" id="statBestProduct">-</div></div>
+</div>
+<div id="bestBox" class="best" style="display:none">
+🏆 Best Flip: <span id="bestInfo"></span>
+</div>
+<div class="chart-wrap"><canvas id="profitChart"></canvas></div>
+</div>
+
+<div class="card">
+<h3>History</h3>
+<div class="toolbar">
+<input id="searchBox" placeholder="Filter by product..." oninput="render()">
+<select id="sortSelect" onchange="render()">
+<option value="date_desc">Newest first</option>
+<option value="date_asc">Oldest first</option>
+<option value="profit_desc">Profit (high→low)</option>
+<option value="profit_asc">Profit (low→high)</option>
+<option value="qty_desc">Qty (high→low)</option>
+</select>
+<button class="secondary" onclick="exportJSON()">⬇ Export JSON</button>
+<button class="secondary" onclick="exportCSV()">⬇ Export CSV</button>
+<button class="secondary" onclick="document.getElementById('importFile').click()">⬆ Import JSON</button>
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
+</div>
+<div class="small" id="filterInfo"></div>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th>Date</th>
+<th>Product</th>
+<th>Qty</th>
+<th>Buy</th>
+<th>Sell</th>
+<th>Profit</th>
+<th>ROI</th>
+<th></th>
+</tr></thead>
+<tbody id="hist"></tbody>
+</table>
+</div>
+<div class="toolbar" id="pager"></div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal-bg" id="confirmModal">
+<div class="modal">
+<h4>⚠ Clear all history?</h4>
+<p class="small">This will permanently delete all saved flips. This cannot be undone.</p>
+<div class="row">
+<button class="secondary" onclick="closeModal()">Cancel</button>
+<button class="danger" onclick="confirmClearHistory()">Delete All</button>
+</div>
+</div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal-bg" id="editModal">
+<div class="modal">
+<h4>Edit Flip</h4>
+<label>Product<input id="editProduct"></label>
+<label>Quantity<input id="editQty" type="number"></label>
+<label>Buy Price<input id="editBuy" type="number" step="0.0001"></label>
+<label>Sell Price<input id="editSell" type="number" step="0.0001"></label>
+<div class="row">
+<button class="secondary" onclick="closeEditModal()">Cancel</button>
+<button onclick="saveEdit()">Save</button>
+</div>
+</div>
+</div>
+
+<script>
+const ids=["qty","buy","sell","fee","product"];
+let currentProfit=0;
+let editIndex=null;
+let chart=null;
+const PAGE_SIZE=15;
+let currentPage=1;
+
+ids.forEach(i=>document.getElementById(i).addEventListener("input",calc));
+
+function calc(){
+let q=+qty.value||0,b=+buy.value||0,s=+sell.value||0,f=+fee.value||0;
+let inv=q*b,g=q*s,fa=g*f/100,net=g-fa,p=net-inv;
+currentProfit=p;
+
+investment.textContent=inv.toFixed(2);
+gross.textContent=g.toFixed(2);
+feeAmt.textContent=fa.toFixed(2);
+net.textContent=net.toFixed(2);
+profit.innerHTML='<span class="'+(p>=0?'green':'red')+'">'+p.toFixed(2)+'</span>';
+ppi.textContent=(q?p/q:0).toFixed(4);
+roi.textContent=(inv?100*p/inv:0).toFixed(2)+"%";
+be.textContent=(q?(inv/(q*(1-f/100))):0).toFixed(4);
+
+let warnings=[];
+document.getElementById("buy").classList.remove("warn");
+document.getElementById("sell").classList.remove("warn");
+document.getElementById("qty").classList.remove("warn");
+if(q<=0){warnings.push("Quantity should be greater than 0.");document.getElementById("qty").classList.add("warn");}
+if(b<0||s<0){warnings.push("Prices can't be negative.");}
+if(s<b){warnings.push("Sell price is lower than buy price — this flip is a loss.");document.getElementById("sell").classList.add("warn");}
+if(f<0||f>100){warnings.push("Fee should be between 0% and 100%.");}
+inputWarning.textContent=warnings.join(" ");
+}
+
+function getHist(){return JSON.parse(localStorage.getItem("weflips")||"[]")}
+function setHist(h){localStorage.setItem("weflips",JSON.stringify(h))}
+
+function getFilteredSorted(){
+let h=getHist().map((x,i)=>({...x,_idx:i}));
+let q=document.getElementById("searchBox").value.trim().toLowerCase();
+if(q) h=h.filter(x=>x.n.toLowerCase().includes(q));
+
+let sel=document.getElementById("sortSelect").value;
+let [f,d]=sel.split("_");
+const fieldMap={date:"date",profit:"p",qty:"qty",product:"n"};
+const key=fieldMap[f]||"date";
+h.sort((a,b)=>{
+  let av=a[key], bv=b[key];
+  if(key==="date"){av=new Date(a.date).getTime();bv=new Date(b.date).getTime();}
+  if(typeof av==="string") return d==="asc"?av.localeCompare(bv):bv.localeCompare(av);
+  return d==="asc"?av-bv:bv-av;
+});
+return h;
+}
+
+function render(){
+let all=getHist();
+let filtered=getFilteredSorted();
+
+let totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+if(currentPage>totalPages) currentPage=totalPages;
+let start=(currentPage-1)*PAGE_SIZE;
+let pageItems=filtered.slice(start,start+PAGE_SIZE);
+
+let tb=document.getElementById("hist");
+tb.innerHTML="";
+pageItems.forEach(x=>{
+  let inv=x.qty*x.buy;
+  let itemRoi=inv?100*x.p/inv:0;
+  tb.innerHTML+=`<tr>
+    <td>${new Date(x.date).toLocaleString()}</td>
+    <td>${x.n}</td>
+    <td>${x.qty}</td>
+    <td>${x.buy.toFixed(4)}</td>
+    <td>${x.sell.toFixed(4)}</td>
+    <td class="${x.p>=0?'green':'red'}">${x.p.toFixed(2)}</td>
+    <td class="${itemRoi>=0?'green':'red'}">${itemRoi.toFixed(1)}%</td>
+    <td>
+      <button class="secondary" onclick="openEdit(${x._idx})">✎</button>
+      <button class="danger" onclick="del(${x._idx})">X</button>
+    </td>
+  </tr>`;
+});
+
+document.getElementById("filterInfo").textContent=
+  `Showing ${pageItems.length} of ${filtered.length} flip(s)${filtered.length!==all.length?` (filtered from ${all.length} total)`:""}`;
+
+renderPager(totalPages);
+renderStats(all);
+renderChart(all);
+}
+
+function renderPager(totalPages){
+let pager=document.getElementById("pager");
+if(totalPages<=1){pager.innerHTML="";return;}
+let html="";
+for(let i=1;i<=totalPages;i++){
+  html+=`<button class="${i===currentPage?'':'secondary'}" onclick="goPage(${i})">${i}</button>`;
+}
+pager.innerHTML=html;
+}
+function goPage(p){currentPage=p;render();}
+
+function renderStats(all){
+let count=all.length;
+let totalProfit=all.reduce((s,x)=>s+x.p,0);
+let totalInv=all.reduce((s,x)=>s+x.qty*x.buy,0);
+let avgRoi=totalInv?100*totalProfit/totalInv:0;
+
+statCount.textContent=count;
+statTotal.innerHTML=`<span class="${totalProfit>=0?'green':'red'}">${totalProfit.toFixed(2)}</span>`;
+statRoi.innerHTML=`<span class="${avgRoi>=0?'green':'red'}">${avgRoi.toFixed(1)}%</span>`;
+
+let byProduct={};
+all.forEach(x=>{byProduct[x.n]=(byProduct[x.n]||0)+x.p;});
+let bestProductName="-",bestProductVal=-Infinity;
+Object.entries(byProduct).forEach(([n,v])=>{if(v>bestProductVal){bestProductVal=v;bestProductName=n;}});
+statBestProduct.textContent=count?bestProductName:"-";
+
+if(count){
+  let best=all.reduce((a,b)=>b.p>a.p?b:a,all[0]);
+  bestBox.style.display="block";
+  bestInfo.innerHTML=`${best.n} — <span class="green">${best.p.toFixed(2)} Gold</span> (qty: ${best.qty}, buy: ${best.buy.toFixed(4)}, sell: ${best.sell.toFixed(4)}, ${new Date(best.date).toLocaleString()})`;
+}else{
+  bestBox.style.display="none";
+}
+}
+
+function renderChart(all){
+let sorted=[...all].sort((a,b)=>new Date(a.date)-new Date(b.date));
+let labels=[],cumulative=[],running=0;
+sorted.forEach(x=>{running+=x.p;labels.push(new Date(x.date).toLocaleDateString());cumulative.push(running.toFixed(2));});
+
+const ctx=document.getElementById("profitChart").getContext("2d");
+if(chart) chart.destroy();
+chart=new Chart(ctx,{
+  type:"line",
+  data:{labels:labels,datasets:[{label:"Cumulative Profit",data:cumulative,borderColor:"#22c55e",backgroundColor:"rgba(34,197,94,0.15)",fill:true,tension:0.2}]},
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:"#fff"}}},
+    scales:{
+      x:{ticks:{color:"#9ca3af"},grid:{color:"#374151"}},
+      y:{ticks:{color:"#9ca3af"},grid:{color:"#374151"}}
+    }
+  }
+});
+}
+
+function saveFlip(){
+let h=getHist();
+h.push({
+  n:product.value||"Unnamed",
+  p:currentProfit,
+  qty:+qty.value||0,
+  buy:+buy.value||0,
+  sell:+sell.value||0,
+  fee:+fee.value||0,
+  date:new Date().toISOString()
+});
+setHist(h);
+render();
+}
+
+function del(i){
+let h=getHist();h.splice(i,1);setHist(h);render();
+}
+
+function openEdit(i){
+editIndex=i;
+let h=getHist();
+let x=h[i];
+editProduct.value=x.n;
+editQty.value=x.qty;
+editBuy.value=x.buy;
+editSell.value=x.sell;
+document.getElementById("editModal").classList.add("show");
+}
+function closeEditModal(){document.getElementById("editModal").classList.remove("show");editIndex=null;}
+function saveEdit(){
+if(editIndex===null) return;
+let h=getHist();
+let x=h[editIndex];
+let q=+editQty.value||0,b=+editBuy.value||0,s=+editSell.value||0;
+let fee=x.fee!==undefined?x.fee:0;
+let inv=q*b, g=q*s, fa=g*fee/100, net=g-fa, p=net-inv;
+x.n=editProduct.value||"Unnamed";
+x.qty=q;x.buy=b;x.sell=s;x.p=p;
+setHist(h);
+closeEditModal();
+render();
+}
+
+function askClearHistory(){document.getElementById("confirmModal").classList.add("show");}
+function closeModal(){document.getElementById("confirmModal").classList.remove("show");}
+function confirmClearHistory(){
+localStorage.removeItem("weflips");
+closeModal();
+render();
+}
+
+function exportJSON(){
+let h=getHist();
+let blob=new Blob([JSON.stringify(h,null,2)],{type:"application/json"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="war_flips_"+new Date().toISOString().slice(0,10)+".json";
+a.click();
+}
+
+function exportCSV(){
+let h=getHist();
+let header="date,product,qty,buy,sell,profit\n";
+let rows=h.map(x=>[x.date,x.n,x.qty,x.buy,x.sell,x.p].join(",")).join("\n");
+let blob=new Blob([header+rows],{type:"text/csv"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="war_flips_"+new Date().toISOString().slice(0,10)+".csv";
+a.click();
+}
+
+function importJSON(event){
+let file=event.target.files[0];
+if(!file) return;
+let reader=new FileReader();
+reader.onload=function(e){
+  try{
+    let imported=JSON.parse(e.target.result);
+    if(!Array.isArray(imported)) throw new Error("Invalid format");
+    let valid=imported.filter(x=>typeof x.n==="string"&&typeof x.p==="number"&&typeof x.qty==="number");
+    let h=getHist();
+    setHist(h.concat(valid));
+    render();
+    alert(`Imported ${valid.length} flip(s).`);
+  }catch(err){
+    alert("Import failed: invalid JSON file.");
+  }
+  event.target.value="";
+};
+reader.readAsText(file);
+}
+
+calc();render();
+</script>
+</body></html>
